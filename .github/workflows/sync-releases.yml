@@ -2,9 +2,7 @@ name: Sync Releases from Upstream
 
 on:
   schedule:
-    # Runs every 6 hours automatically
     - cron: '0 */6 * * *'
-  # Allows you to trigger it manually anytime
   workflow_dispatch:
 
 jobs:
@@ -14,15 +12,25 @@ jobs:
       contents: write
 
     steps:
+      - name: Checkout Fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch and Push Upstream Tags
+        run: |
+          # Pull all release tags from the original repo into your fork
+          git remote add upstream https://github.com/storytold/photocraft.git
+          git fetch upstream --tags
+          git push origin --tags
+
       - name: Fetch and Sync Releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPSTREAM_REPO: storytold/photocraft
         run: |
-          # 1. Fetch upstream releases
           UPSTREAM_RELEASES=$(gh api repos/$UPSTREAM_REPO/releases)
 
-          # 2. Loop through each release
           echo "$UPSTREAM_RELEASES" | jq -c '.[]' | while read -r release; do
             TAG=$(echo "$release" | jq -r '.tag_name')
             NAME=$(echo "$release" | jq -r '.name // empty')
@@ -30,14 +38,12 @@ jobs:
             PRERELEASE=$(echo "$release" | jq -r '.prerelease')
             DRAFT=$(echo "$release" | jq -r '.draft')
 
-            # Skip drafts
             if [ "$DRAFT" = "true" ]; then
               continue
             fi
 
-            # Skip if release already exists in fork
             if gh release view "$TAG" >/dev/null 2>&1; then
-              echo "Release $TAG already exists. Skipping."
+              echo "Release $TAG already exists in fork. Skipping."
               continue
             fi
 
@@ -45,20 +51,17 @@ jobs:
             rm -rf ./downloads
             mkdir -p ./downloads
 
-            # Download asset binaries/files
             echo "$release" | jq -r '.assets[]?.browser_download_url' | while read -r url; do
               if [ -n "$url" ]; then
                 wget -q -P ./downloads "$url"
               fi
             done
 
-            # Set tags and options
             ARGS=()
             [ "$PRERELEASE" = "true" ] && ARGS+=(--prerelease)
             [ -n "$NAME" ] && ARGS+=(-t "$NAME")
             [ -n "$BODY" ] && ARGS+=(-n "$BODY")
 
-            # Create release with assets attached
             if [ -d "./downloads" ] && [ "$(ls -A ./downloads)" ]; then
               gh release create "$TAG" ./downloads/* "${ARGS[@]}"
             else
