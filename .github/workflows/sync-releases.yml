@@ -28,48 +28,48 @@ jobs:
           UPSTREAM_REPO: storytold/photocraft
         run: |
           # 1. Fetch releases in chronological order (oldest to newest)
-          UPSTREAM_RELEASES=$(gh api repos/$UPSTREAM_REPO/releases | jq 'reverse')
+          UPSTREAM_RELEASES=$(gh api "repos/${UPSTREAM_REPO}/releases" | jq 'reverse')
 
           # 2. Iterate through each release
-          echo "$UPSTREAM_RELEASES" | jq -c '.[]' | while IFS= read -r release; do
-            TAG=$(echo "$release" | jq -r '.tag_name')
-            NAME=$(echo "$release" | jq -r '.name // empty')
-            BODY=$(echo "$release" | jq -r '.body // empty')
-            PRERELEASE=$(echo "$release" | jq -r '.prerelease')
-            DRAFT=$(echo "$release" | jq -r '.draft')
-            TARGET_COMMIT=$(echo "$release" | jq -r '.target_commitish')
+          echo "${UPSTREAM_RELEASES}" | jq -c '.[]' | while IFS= read -r release; do
+            TAG=$(echo "${release}" | jq -r '.tag_name')
+            NAME=$(echo "${release}" | jq -r '.name // empty')
+            BODY=$(echo "${release}" | jq -r '.body // empty')
+            PRERELEASE=$(echo "${release}" | jq -r '.prerelease')
+            DRAFT=$(echo "${release}" | jq -r '.draft')
+            TARGET_COMMIT=$(echo "${release}" | jq -r '.target_commitish')
 
             # Skip draft releases
-            [ "$DRAFT" = "true" ] && continue
+            [ "${DRAFT}" = "true" ] && continue
 
-            # Skip if release already exists in your fork
-            if gh release view "$TAG" >/dev/null 2>&1; then
-              echo "Release $TAG already exists in fork. Skipping."
+            # Skip if release already exists in fork
+            if gh release view "${TAG}" >/dev/null 2>&1; then
+              echo "Release ${TAG} already exists in fork. Skipping."
               continue
             fi
 
-            echo "=== Syncing Release: $TAG ==="
+            echo "=== Syncing Release: ${TAG} ==="
             rm -rf ./downloads
             mkdir -p ./downloads
 
             # Download asset binaries
-            echo "$release" | jq -r '.assets[]?.browser_download_url' | while IFS= read -r url; do
-              if [ -n "$url" ]; then
-                wget -q -P ./downloads "$url" || echo "Failed to download $url"
+            echo "${release}" | jq -r '.assets[]?.browser_download_url' | while IFS= read -r url; do
+              if [ -n "${url}" ]; then
+                wget -q -P ./downloads "${url}" || echo "Failed to download ${url}"
               fi
             done
 
             ARGS=()
-            [ "$PRERELEASE" = "true" ] && ARGS+=(--prerelease)
-            [ -n "$NAME" ] && ARGS+=(-t "$NAME")
-            [ -n "$BODY" ] && ARGS+=(-n "$BODY")
-            [ -n "$TARGET_COMMIT" ] && ARGS+=(--target "$TARGET_COMMIT")
+            [ "${PRERELEASE}" = "true" ] && ARGS+=(--prerelease)
+            [ -n "${NAME}" ] && ARGS+=(-t "${NAME}")
+            [ -n "${BODY}" ] && ARGS+=(-n "${BODY}")
+            [ -n "${TARGET_COMMIT}" ] && ARGS+=(--target "${TARGET_COMMIT}")
 
             # Create release and upload files
-            if [ -d "./downloads" ] && [ "$(ls -A ./downloads)" ]; then
-              gh release create "$TAG" ./downloads/* "${ARGS[@]}" || echo "Failed to create release $TAG"
+            if [ -d "./downloads" ] && [ -n "$(find ./downloads -mindepth 1 -print -quit)" ]; then
+              find ./downloads -type f -exec gh release create "${TAG}" {} + "${ARGS[@]}" || echo "Failed to create release ${TAG}"
             else
-              gh release create "$TAG" "${ARGS[@]}" || echo "Failed to create release $TAG"
+              gh release create "${TAG}" "${ARGS[@]}" || echo "Failed to create release ${TAG}"
             fi
 
             rm -rf ./downloads
