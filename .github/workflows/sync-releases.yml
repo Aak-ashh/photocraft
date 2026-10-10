@@ -10,7 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      workflows: write
 
     steps:
       - name: Fetch and Mirror Releases
@@ -18,7 +17,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPSTREAM_REPO: storytold/photocraft
         run: |
-          # 1. Fetch releases in reverse order (oldest to newest)
+          # 1. Fetch upstream releases in reverse order (oldest to newest)
           UPSTREAM_RELEASES=$(gh api repos/$UPSTREAM_REPO/releases | jq 'reverse')
 
           # 2. Iterate through each release
@@ -30,10 +29,10 @@ jobs:
             DRAFT=$(echo "$release" | jq -r '.draft')
             TARGET_COMMIT=$(echo "$release" | jq -r '.target_commitish')
 
-            # Skip drafts
+            # Skip draft releases
             [ "$DRAFT" = "true" ] && continue
 
-            # Skip if release already exists in your fork
+            # Skip if release already exists in fork
             if gh release view "$TAG" >/dev/null 2>&1; then
               echo "Release $TAG already exists in fork. Skipping."
               continue
