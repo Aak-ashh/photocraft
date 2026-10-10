@@ -10,50 +10,43 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      workflows: write
 
     steps:
-      - name: Checkout Fork
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Fetch and Push Upstream Tags
-        run: |
-          # Pull all release tags from the original repo into your fork
-          git remote add upstream https://github.com/storytold/photocraft.git
-          git fetch upstream --tags
-          git push origin --tags
-
-      - name: Fetch and Sync Releases
+      - name: Fetch and Mirror Releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPSTREAM_REPO: storytold/photocraft
         run: |
-          UPSTREAM_RELEASES=$(gh api repos/$UPSTREAM_REPO/releases)
+          # 1. Fetch releases in reverse order (oldest to newest)
+          UPSTREAM_RELEASES=$(gh api repos/$UPSTREAM_REPO/releases | jq 'reverse')
 
-          echo "$UPSTREAM_RELEASES" | jq -c '.[]' | while read -r release; do
+          # 2. Iterate through each release
+          echo "$UPSTREAM_RELEASES" | jq -c '.[]' | while IFS= read -r release; do
             TAG=$(echo "$release" | jq -r '.tag_name')
             NAME=$(echo "$release" | jq -r '.name // empty')
             BODY=$(echo "$release" | jq -r '.body // empty')
             PRERELEASE=$(echo "$release" | jq -r '.prerelease')
             DRAFT=$(echo "$release" | jq -r '.draft')
+            TARGET_COMMIT=$(echo "$release" | jq -r '.target_commitish')
 
-            if [ "$DRAFT" = "true" ]; then
-              continue
-            fi
+            # Skip drafts
+            [ "$DRAFT" = "true" ] && continue
 
+            # Skip if release already exists in your fork
             if gh release view "$TAG" >/dev/null 2>&1; then
               echo "Release $TAG already exists in fork. Skipping."
               continue
             fi
 
-            echo "Syncing release: $TAG"
+            echo "=== Syncing Release: $TAG ==="
             rm -rf ./downloads
             mkdir -p ./downloads
 
-            echo "$release" | jq -r '.assets[]?.browser_download_url' | while read -r url; do
+            # Download asset binaries
+            echo "$release" | jq -r '.assets[]?.browser_download_url' | while IFS= read -r url; do
               if [ -n "$url" ]; then
-                wget -q -P ./downloads "$url"
+                wget -q -P ./downloads "$url" || echo "Failed to download $url"
               fi
             done
 
@@ -61,11 +54,13 @@ jobs:
             [ "$PRERELEASE" = "true" ] && ARGS+=(--prerelease)
             [ -n "$NAME" ] && ARGS+=(-t "$NAME")
             [ -n "$BODY" ] && ARGS+=(-n "$BODY")
+            [ -n "$TARGET_COMMIT" ] && ARGS+=(--target "$TARGET_COMMIT")
 
+            # Create release and upload files
             if [ -d "./downloads" ] && [ "$(ls -A ./downloads)" ]; then
-              gh release create "$TAG" ./downloads/* "${ARGS[@]}"
+              gh release create "$TAG" ./downloads/* "${ARGS[@]}" || echo "Failed to create release $TAG"
             else
-              gh release create "$TAG" "${ARGS[@]}"
+              gh release create "$TAG" "${ARGS[@]}" || echo "Failed to create release $TAG"
             fi
 
             rm -rf ./downloads
