@@ -17,20 +17,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Fetch Upstream Tags
-        run: |
-          git remote add upstream https://github.com/storytold/photocraft.git
-          git fetch upstream --tags
-
       - name: Mirror Releases and Assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPSTREAM_REPO: storytold/photocraft
         run: |
-          # 1. Fetch releases in chronological order (oldest to newest)
+          # 1. Fetch upstream releases (oldest to newest)
           UPSTREAM_RELEASES=$(gh api "repos/${UPSTREAM_REPO}/releases" | jq 'reverse')
 
-          # 2. Iterate through each release
+          # 2. Iterate through releases
           echo "${UPSTREAM_RELEASES}" | jq -c '.[]' | while IFS= read -r release; do
             TAG=$(echo "${release}" | jq -r '.tag_name')
             NAME=$(echo "${release}" | jq -r '.name // empty')
@@ -39,12 +34,12 @@ jobs:
             DRAFT=$(echo "${release}" | jq -r '.draft')
             TARGET_COMMIT=$(echo "${release}" | jq -r '.target_commitish')
 
-            # Skip draft releases
             [ "${DRAFT}" = "true" ] && continue
 
-            # Skip if release already exists in fork
-            if gh release view "${TAG}" >/dev/null 2>&1; then
-              echo "Release ${TAG} already exists in fork. Skipping."
+            # Check if an actual GitHub Release (not just a tag) exists
+            RELEASE_EXISTS=$(gh api "repos/${{ github.repository }}/releases/tags/${TAG}" --silent 2>&1 || true)
+            if echo "${RELEASE_EXISTS}" | grep -q '"id":'; then
+              echo "Release ${TAG} already exists. Skipping."
               continue
             fi
 
@@ -52,7 +47,7 @@ jobs:
             rm -rf ./downloads
             mkdir -p ./downloads
 
-            # Download asset binaries
+            # Download compiled binaries
             echo "${release}" | jq -r '.assets[]?.browser_download_url' | while IFS= read -r url; do
               if [ -n "${url}" ]; then
                 wget -q -P ./downloads "${url}" || echo "Failed to download ${url}"
@@ -65,7 +60,7 @@ jobs:
             [ -n "${BODY}" ] && ARGS+=(-n "${BODY}")
             [ -n "${TARGET_COMMIT}" ] && ARGS+=(--target "${TARGET_COMMIT}")
 
-            # Create release and upload files
+            # Upload release with all compiled binaries
             if [ -d "./downloads" ] && [ -n "$(find ./downloads -mindepth 1 -print -quit)" ]; then
               find ./downloads -type f -exec gh release create "${TAG}" {} + "${ARGS[@]}" || echo "Failed to create release ${TAG}"
             else
