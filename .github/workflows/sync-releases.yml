@@ -36,7 +36,7 @@ jobs:
 
             [ "${DRAFT}" = "true" ] && continue
 
-            # Check if an actual GitHub Release (not just a tag) exists
+            # Check if an actual GitHub Release already exists
             RELEASE_EXISTS=$(gh api "repos/${{ github.repository }}/releases/tags/${TAG}" --silent 2>&1 || true)
             if echo "${RELEASE_EXISTS}" | grep -q '"id":'; then
               echo "Release ${TAG} already exists. Skipping."
@@ -60,11 +60,15 @@ jobs:
             [ -n "${BODY}" ] && ARGS+=(-n "${BODY}")
             [ -n "${TARGET_COMMIT}" ] && ARGS+=(--target "${TARGET_COMMIT}")
 
-            # Upload release with all compiled binaries
-            if [ -d "./downloads" ] && [ -n "$(find ./downloads -mindepth 1 -print -quit)" ]; then
-              find ./downloads -type f -exec gh release create "${TAG}" {} + "${ARGS[@]}" || echo "Failed to create release ${TAG}"
+            # Check if any files were downloaded
+            shopt -s nullglob
+            FILES=(./downloads/*)
+            shopt -u nullglob
+
+            if [ ${#FILES[@]} -gt 0 ]; then
+              gh release create "${TAG}" "${FILES[@]}" "${ARGS[@]}"
             else
-              gh release create "${TAG}" "${ARGS[@]}" || echo "Failed to create release ${TAG}"
+              gh release create "${TAG}" "${ARGS[@]}"
             fi
 
             rm -rf ./downloads
