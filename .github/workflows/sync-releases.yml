@@ -8,8 +8,6 @@ on:
 jobs:
   sync-releases:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
       - name: Checkout Fork
@@ -19,7 +17,7 @@ jobs:
 
       - name: Mirror Releases and Assets
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
           UPSTREAM_REPO: storytold/photocraft
         run: |
           # 1. Fetch upstream releases (oldest to newest)
