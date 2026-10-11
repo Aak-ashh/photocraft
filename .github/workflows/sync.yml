@@ -4,7 +4,6 @@ on:
   schedule:
     # Runs daily at 00:00 UTC
     - cron: '0 0 * * *'
-  # Allows manual runs from the Actions tab
   workflow_dispatch:
 
 jobs:
@@ -24,7 +23,7 @@ jobs:
           upstream_sync_repo: storytold/photocraft
           upstream_sync_branch: main
           target_sync_branch: main
-          target_repo_token: ${{ secrets.GITHUB_TOKEN }}
+          target_repo_token: ${{ secrets.SYNC_TOKEN }}
 
       - name: Sync check
         if: failure()
